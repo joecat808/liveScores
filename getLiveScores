@@ -1,0 +1,135 @@
+#!/Users/joecat/Virtualenvs/venv-tradial/bin/python3
+import os.path
+import pickle
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+from lxml.html import fromstring
+from itertools import cycle
+import random
+import time
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SPREADSHEET_ID = '1lJrxEc7ixtYhgvKXfW8YET_gSTzEa98XT_PYQpYT2Cw'
+RANGE_NAME = 'Live Scores!A1:B'
+
+def buildSpreadsheet(data):
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server()
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    service = build('sheets', 'v4', credentials=creds)
+    
+    values = data.values.tolist()
+    body = { 'values' : values}
+    result = service.spreadsheets().values().update(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME, 
+             valueInputOption='USER_ENTERED', body=body).execute()
+
+USER_AGENT_LIST = [
+   #Chrome
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 5.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36',
+    #Firefox
+    'Mozilla/4.0 (compatible; MSIE 9.0; Windows NT 6.1)',
+    'Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)',
+    'Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (Windows NT 6.2; WOW64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.0; Trident/5.0)',
+    'Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)',
+    'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0)',
+    'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)'
+]
+
+def get_proxies():
+    url = 'https://free-proxy-list.net/'
+    response = requests.get(url)
+    parser = fromstring(response.text)
+    proxies = set()
+    for i in parser.xpath('//tbody/tr')[:15]:
+        if i.xpath('.//td[7][contains(text(),"yes")]'):
+            #Grabbing IP and corresponding PORT
+            proxy = ":".join([i.xpath('.//td[1]/text()')[0], i.xpath('.//td[2]/text()')[0]])
+            proxies.add(proxy)
+    return proxies
+
+def tryToRequestURL(url):
+    try:
+        ##proxy = next(proxy_pool)
+        user_agent = random.choice(USER_AGENT_LIST)
+        sauce = requests.get(url, headers={'User-Agent': user_agent})#, proxies={'http':'http://%s' % proxy})
+        soup = BeautifulSoup(sauce.text, 'html5lib')
+        table = soup.find_all("table", attrs={"class":"Table2__table__wrapper"})[0]
+        return table
+    except Exception as e:
+        print('Failed on %s (%s)' % (url, e))
+        time.sleep(1)
+        tryToRequestURL(url)
+
+def runTheBigMan():
+    #proxies = get_proxies()
+    #proxy_pool = cycle(proxies)
+    myURL = "http://www.espn.com/golf/leaderboard"
+    myTable = tryToRequestURL(myURL)
+
+    for x in range(0,100):
+        time.sleep(1)
+        if not myTable:
+            myTable = tryToRequestURL(myURL)
+        else:
+            break
+    
+    bigManTable = pd.DataFrame(columns=range(0,6), index=[0])
+    new_table = pd.DataFrame(columns=range(0,6), index=[0])
+
+    for row in myTable.find_all('tr'):
+        if len(row.find_all('td')) != 0:
+            column_marker = 0
+            columns = row.find_all('td')[:6]
+            for column in columns:
+                new_table.iat[0,column_marker] = column.get_text()
+                column_marker += 1
+            bigManTable = pd.concat([bigManTable, new_table], ignore_index=True)
+
+    bigManTable = bigManTable[[2,3]]
+    bigManTable.columns = ['Player', 'Score']
+    bigManTable = bigManTable.iloc[3:]
+    bigManTable.reset_index(drop=True, inplace=True)
+
+    buildSpreadsheet(bigManTable)
+
+while True:
+    print('Running the big man...')
+    runTheBigMan()
+    print('Big Man complete.')
+    time.sleep(240)
